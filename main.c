@@ -1,3 +1,4 @@
+#include "arp.h"
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -15,17 +16,17 @@
 #define ARP_REQUEST 1
 #define ARP_REPLY 2
 
-struct arp_header {
-  uint16_t hw_type;
-  uint16_t proto_type;
-  uint8_t hw_size;
-  uint8_t proto_size;
-  uint16_t opcode;
-  uint8_t sender_mac[6];
-  uint8_t sender_ip[4];
-  uint8_t target_mac[6];
-  uint8_t target_ip[4];
-} __attribute__((packed));
+// struct arp_header {
+//   uint16_t hw_type;
+//   uint16_t proto_type;
+//   uint8_t hw_size;
+//   uint8_t proto_size;
+//   uint16_t opcode;
+//   uint8_t sender_mac[6];
+//   uint8_t sender_ip[4];
+//   uint8_t target_mac[6];
+//   uint8_t target_ip[4];
+// } __attribute__((packed));
 
 void print_mac(uint8_t *mac) {
   printf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3],
@@ -36,7 +37,7 @@ void print_ip(uint8_t *ip) {
   printf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
 }
 
-void print_arp_packet(struct arp_header *arp, int length) {
+void print_arp_packet(struct arp_hdr_t *arp, int length) {
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   struct tm *tm = localtime(&ts.tv_sec);
@@ -44,20 +45,20 @@ void print_arp_packet(struct arp_header *arp, int length) {
   printf("%02d:%02d:%02d.%06ld ARP, ", tm->tm_hour, tm->tm_min, tm->tm_sec,
          ts.tv_nsec / 1000);
 
-  if (ntohs(arp->opcode) == ARP_REQUEST) {
+  if (ntohs(arp->op) == ARP_REQUEST) {
     printf("Request who-has ");
-    print_ip(arp->target_ip);
+    print_ip(arp->tpa);
     printf(" tell ");
-    print_ip(arp->sender_ip);
-  } else if (ntohs(arp->opcode) == ARP_REPLY) {
+    print_ip(arp->spa);
+  } else if (ntohs(arp->op) == ARP_REPLY) {
     printf("Reply ");
-    print_ip(arp->sender_ip);
+    print_ip(arp->spa);
     printf(" is-at ");
-    print_mac(arp->sender_mac);
+    print_mac(arp->sha);
     printf(" tell ");
-    print_ip(arp->target_ip);
+    print_ip(arp->tpa);
   } else {
-    printf("Unknown operation (%d)", ntohs(arp->opcode));
+    printf("Unknown operation (%d)", ntohs(arp->op));
   }
 
   printf(", length %d\n", length);
@@ -96,28 +97,28 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  unsigned char *buffer = (unsigned char *)malloc(65536);
-  struct ethhdr *eth = (struct ethhdr *)buffer;
-  struct arp_header *arp =
-      (struct arp_header *)(buffer + sizeof(struct ethhdr));
+  unsigned char *buf = (unsigned char *)malloc(65536);
+  struct ethhdr *eth = (struct ethhdr *)buf;
+  struct arp_hdr_t *arp =
+      (struct arp_hdr_t *)(buf + sizeof(struct ether_hdr_t));
 
   printf("Listening for ARP packets on %s...\n", argv[1]);
 
   while (1) {
-    int data_size = recvfrom(sock_raw, buffer, 65536, 0, NULL, NULL);
+    int data_size = recvfrom(sock_raw, buf, 65536, 0, NULL, NULL);
     if (data_size < 0) {
       perror("recvfrom");
       close(sock_raw);
-      free(buffer);
+      free(buf);
       exit(1);
     }
 
     if (ntohs(eth->h_proto) == ETH_P_ARP) {
-      print_arp_packet(arp, data_size - sizeof(struct ethhdr));
+      print_arp_packet(arp, data_size - sizeof(struct ether_hdr_t));
     }
   }
 
   close(sock_raw);
-  free(buffer);
+  free(buf);
   return 0;
 }
